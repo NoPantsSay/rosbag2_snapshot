@@ -13,6 +13,7 @@ It subscribes to topics and maintains a buffer of recent messages like a dash ca
 
 ```
 $ ros2 run rosbag2_snapshot snapshotter
+```
 
 Buffer recent messages until triggered to write or trigger an already running instance.
 
@@ -22,6 +23,7 @@ Buffer recent messages until triggered to write or trigger an already running in
   ros__parameters:
     default_duration_limit: 10.0           # [Optional, default=-1] Maximum time difference between newest and oldest message in seconds
     default_memory_limit: 64.0             # [Optional, default=-1] Maximum memory used by messages in each topic's buffer, in MB
+    storage_id: "sqlite3"                  # [Optional, default="sqlite3"] Storage format backend. Use "mcap" for MCAP format.
     topics: ["/topic1", "/topic2"]         # [Optional] List of topics to buffer. If empty, buffer all topics.
     topic_details:
       /topic1:
@@ -35,22 +37,28 @@ Buffer recent messages until triggered to write or trigger an already running in
         memory: -1                         # Negative value means no limit
 ```
 
+example
+
+``` bash
+ros2 run rosbag2_snapshot snapshotter --ros-args -p default_duration_limit:=10.0 -p storage_id:='mcap'
+```
+
 ### Client
 
 ###### Write all buffered data to `<datetime>.bag`
-`ros2 run rosbag2_snapshot snapshotter_client --ros-params -p action_type:=trigger_write`
+`ros2 run rosbag2_snapshot snapshotter_client --ros-args -p action_type:=trigger_write`
 
 ###### Write buffered data from selected topics to `new_lighting<datetime>.bag`
-`ros2 run rosbag2_snapshot snapshotter_client --ros-params -p filename:=new_lighting -p topics:=["/camera/image_raw", "/camera/camera_info"]`
+`ros2 run rosbag2_snapshot snapshotter_client --ros-args -p action_type:=trigger_write -p filename:=new_lighting -p topics:=["/camera/image_raw", "/camera/camera_info"]`
 
 ###### Write all buffered data to `/home/user/crashed_into_wall.bag`
-`ros2 run rosbag2_snapshot snapshotter_client --ros-params -p filename:="/home/user/crashed_into_wall.bag"`
+`ros2 run rosbag2_snapshot snapshotter_client --ros-args -p action_type:=trigger_write -p filename:="/home/user/crashed_into_wall.bag"`
 
 ###### Pause buffering of new data, holding current buffer in memory until resumed or write is triggered
-`ros2 run rosbag2_snapshot snapshotter_client --ros-params -p action_type:=pause`
+`ros2 run rosbag2_snapshot snapshotter_client --ros-args -p action_type:=pause`
 
 ###### Resume buffering new data
-`ros2 run rosbag2_snapshot snapshotter_client --ros-params -p action_type:=resume`
+`ros2 run rosbag2_snapshot snapshotter_client --ros-args -p action_type:=resume`
 
 ###### Call trigger service manually
 

@@ -26,9 +26,10 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include <rclcpp/scope_exit.hpp>
+#include <rcpputils/scope_exit.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rosbag2_snapshot/snapshotter.hpp>
+#include <rosbag2_storage/storage_options.hpp>
 
 #include <filesystem>
 
@@ -73,9 +74,11 @@ SnapshotterTopicOptions::SnapshotterTopicOptions(
 
 SnapshotterOptions::SnapshotterOptions(
   rclcpp::Duration default_duration_limit,
-  int32_t default_memory_limit)
+  int32_t default_memory_limit,
+  const std::string & storage_id)
 : default_duration_limit_(default_duration_limit),
   default_memory_limit_(default_memory_limit),
+  storage_id_(storage_id),
   topics_()
 {
 }
@@ -310,6 +313,14 @@ void Snapshotter::parseOptionsFromParams()
   }
 
   try {
+    options_.storage_id_ = declare_parameter<std::string>(
+      "storage_id", "sqlite3");
+  } catch (const rclcpp::ParameterTypeException & ex) {
+    RCLCPP_ERROR(get_logger(), "storage_id must be a string.");
+    throw ex;
+  }
+
+  try {
     topics = declare_parameter<std::vector<std::string>>(
       "topics", std::vector<std::string>{});
   } catch (const rclcpp::ParameterTypeException & ex) {
@@ -383,18 +394,6 @@ void Snapshotter::fixTopicOptions(SnapshotterTopicOptions & options)
   if (options.memory_limit_ == SnapshotterTopicOptions::INHERIT_MEMORY_LIMIT) {
     options.memory_limit_ = options_.default_memory_limit_;
   }
-}
-
-bool Snapshotter::postfixFilename(string & file)
-{
-  size_t ind = file.rfind(".bag");
-  // If requested ends in .bag, this is literal name do not append date
-  if (ind != string::npos && ind == file.size() - 4) {
-    return true;
-  }
-  // Otherwise treat as prefix and append datetime and extension
-  file += timeAsStr() + ".bag";
-  return true;
 }
 
 string Snapshotter::timeAsStr()
@@ -491,10 +490,8 @@ void Snapshotter::triggerSnapshotCb(
 {
   (void)request_header;
 
-  if (req->filename.empty() || !postfixFilename(req->filename)) {
-    res->success = false;
-    res->message = "Invalid filename";
-    return;
+  if (req->filename.empty()) {
+    req->filename = timeAsStr();
   }
 
   // Store if we were recording prior to write to restore this state after write
@@ -519,7 +516,7 @@ void Snapshotter::triggerSnapshotCb(
   }
 
   // Ensure that state is updated when function exits, regardlesss of branch path / exception events
-  RCLCPP_SCOPE_EXIT(
+  RCPPUTILS_SCOPE_EXIT(
     // Clear buffers beacuase time gaps (skipped messages) may have occured while paused
     std::unique_lock<std::shared_mutex> write_lock(state_lock_);
     // Turn off writing flag and return recording to its state before writing
@@ -532,7 +529,10 @@ void Snapshotter::triggerSnapshotCb(
   rosbag2_cpp::Writer bag_writer{};
 
   try {
-    bag_writer.open(req->filename);
+    rosbag2_storage::StorageOptions storage_options;
+    storage_options.uri = req->filename;
+    storage_options.storage_id = options_.storage_id_;
+    bag_writer.open(storage_options);
   } catch (const std::exception & ex) {
     res->success = false;
     res->message = "Unable to open file for writing.";
@@ -692,7 +692,7 @@ SnapshotterClient::SnapshotterClient(const rclcpp::NodeOptions & options)
   std::vector<std::string> topic_names{};
 
   try {
-    topic_names = declare_parameter<std::vector<std::string>>("topics");
+    topic_names = declare_parameter<std::vector<std::string>>("topics", std::vector<std::string>{});
   } catch (const rclcpp::ParameterTypeException & ex) {
     if (std::string{ex.what()}.find("not set") == std::string::npos) {
       RCLCPP_ERROR(get_logger(), "topics must be an array of strings.");
@@ -725,23 +725,12 @@ SnapshotterClient::SnapshotterClient(const rclcpp::NodeOptions & options)
   }
 
   try {
-    opts.filename_ = declare_parameter<std::string>("filename");
+    opts.filename_ = declare_parameter<std::string>("filename", "");
   } catch (const rclcpp::ParameterTypeException & ex) {
     if (opts.action_ == SnapshotterClientOptions::TRIGGER_WRITE &&
       std::string{ex.what()}.find("not set") == std::string::npos)
     {
       RCLCPP_ERROR(get_logger(), "filename must be a string.");
-      throw ex;
-    }
-  }
-
-  try {
-    opts.prefix_ = declare_parameter<std::string>("prefix");
-  } catch (const rclcpp::ParameterTypeException & ex) {
-    if (opts.action_ == SnapshotterClientOptions::TRIGGER_WRITE &&
-      std::string{ex.what()}.find("not set") == std::string::npos)
-    {
-      RCLCPP_ERROR(get_logger(), "prefix must be a string.");
       throw ex;
     }
   }
@@ -758,47 +747,33 @@ void SnapshotterClient::setSnapshotterClientOptions(const SnapshotterClientOptio
 {
   if (opts.action_ == SnapshotterClientOptions::TRIGGER_WRITE) {
     auto client = create_client<TriggerSnapshot>("trigger_snapshot");
-    if (!client->service_is_ready()) {
+    if (!client->wait_for_service(std::chrono::seconds(5))) {
       throw std::runtime_error{
               "Service trigger_snapshot is not ready. "
               "Is snapshot running in this namespace?"
       };
     }
 
-    TriggerSnapshot::Request::SharedPtr req;
+    auto req = std::make_shared<TriggerSnapshot::Request>();
 
     for (const auto & topic : opts.topics_) {
       req->topics.push_back(topic.asMessage());
     }
 
-    // Prefix mode
-    if (opts.filename_.empty()) {
-      req->filename = opts.prefix_;
-      size_t ind = req->filename.rfind(".bag");
-      if (ind != string::npos && ind == req->filename.size() - 4) {
-        req->filename.erase(ind);
-      }
-    } else {
-      req->filename = opts.filename_;
-      size_t ind = req->filename.rfind(".bag");
-      if (ind == string::npos || ind != req->filename.size() - 4) {
-        req->filename += ".bag";
-      }
-    }
+    // Use filename as-is; if empty, server will use timestamp
+    req->filename = opts.filename_;
 
     // Resolve filename relative to clients working directory to avoid confusion
-    // Special case of no specified file, ensure still in working directory of client
-    if (req->filename.empty()) {
-      req->filename = "./";
+    if (!req->filename.empty()) {
+      std::filesystem::path p(std::filesystem::absolute(req->filename));
+      req->filename = p.string();
     }
-    std::filesystem::path p(std::filesystem::absolute(req->filename));
-    req->filename = p.string();
 
     auto result_future = client->async_send_request(req);
     auto future_result =
       rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future);
 
-    if (future_result == rclcpp::FutureReturnCode::SUCCESS) {
+    if (future_result != rclcpp::FutureReturnCode::SUCCESS) {
       RCLCPP_ERROR(get_logger(), "Calling the service failed.");
     } else {
       auto result = result_future.get();
@@ -816,7 +791,7 @@ void SnapshotterClient::setSnapshotterClientOptions(const SnapshotterClientOptio
     opts.action_ == SnapshotterClientOptions::RESUME)
   {
     auto client = create_client<SetBool>("enable_snapshot");
-    if (!client->service_is_ready()) {
+    if (!client->wait_for_service(std::chrono::seconds(5))) {
       throw std::runtime_error{
               "Service enable_snapshot does not exist. "
               "Is snapshot running in this namespace?"
@@ -830,7 +805,7 @@ void SnapshotterClient::setSnapshotterClientOptions(const SnapshotterClientOptio
     auto future_result =
       rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future);
 
-    if (future_result == rclcpp::FutureReturnCode::SUCCESS) {
+    if (future_result != rclcpp::FutureReturnCode::SUCCESS) {
       RCLCPP_ERROR(get_logger(), "Calling the service failed.");
     } else {
       auto result = result_future.get();

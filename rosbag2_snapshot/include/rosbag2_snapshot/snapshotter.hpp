@@ -35,6 +35,7 @@
 #include <rosbag2_snapshot_msgs/srv/trigger_snapshot.hpp>
 #include <std_srvs/srv/set_bool.hpp>
 #include <rosbag2_cpp/writer.hpp>
+#include <rosbag2_storage/storage_options.hpp>
 
 #include <chrono>
 #include <deque>
@@ -126,6 +127,8 @@ struct SnapshotterOptions
   int32_t default_memory_limit_;
   // Flag if all topics should be recorded
   bool all_topics_;
+  // Storage format backend (e.g. "sqlite3" or "mcap")
+  std::string storage_id_;
 
   typedef std::map<TopicDetails, SnapshotterTopicOptions> topics_t;
   // Provides list of topics to snapshot and their limit configurations
@@ -133,7 +136,8 @@ struct SnapshotterOptions
 
   SnapshotterOptions(
     rclcpp::Duration default_duration_limit = rclcpp::Duration(30s),
-    int32_t default_memory_limit = -1);
+    int32_t default_memory_limit = -1,
+    const std::string & storage_id = "sqlite3");
 
   // Add a new topic to the configuration, returns false if the topic was already present
   bool addTopic(
@@ -243,9 +247,7 @@ private:
   // Replace individual topic limits with node defaults if they are
   // flagged for it (see SnapshotterTopicOptions)
   void fixTopicOptions(SnapshotterTopicOptions & options);
-  // If file is "prefix" mode (doesn't end in .bag), append current datetime and .bag to end
-  bool postfixFilename(std::string & file);
-  /// Return current local datetime as a string such as 2018-05-22-14-28-51.
+  // Return current local datetime as a string such as 2018-05-22-14-28-51.
   // Used to generate bag filenames
   std::string timeAsStr();
   // Clear the internal buffers of all topics. Used when resuming after a pause to avoid time gaps
@@ -304,10 +306,7 @@ struct SnapshotterClientOptions
   // If empty, write all buffered topics.
   std::vector<TopicDetails> topics_;
   // Name of file to write to when action_ == TRIGGER_WRITE, relative to snapshot node.
-  // If empty, use prefix
   std::string filename_;
-  // Prefix of the name of file written to when action_ == TRIGGER_WRITE.
-  std::string prefix_;
 };
 
 // Node used to call services which interface with the snapshotter node to trigger

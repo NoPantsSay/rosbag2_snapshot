@@ -1,2 +1,5 @@
 .vscode/
 *.swp
+build/
+install/
+log/
