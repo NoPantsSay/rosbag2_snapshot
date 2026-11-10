@@ -290,36 +290,6 @@ private:
     const rosbag2_snapshot_msgs::srv::TriggerSnapshot::Response::SharedPtr & res);
 };
 
-// Configuration for SnapshotterClient
-struct SnapshotterClientOptions
-{
-  SnapshotterClientOptions();
-  enum Action
-  {
-    TRIGGER_WRITE,
-    PAUSE,
-    RESUME
-  };
-  // What to do when SnapshotterClient.run is called
-  Action action_;
-  // List of topics to write when action_ == TRIGGER_WRITE.
-  // If empty, write all buffered topics.
-  std::vector<TopicDetails> topics_;
-  // Name of file to write to when action_ == TRIGGER_WRITE, relative to snapshot node.
-  std::string filename_;
-};
-
-// Node used to call services which interface with the snapshotter node to trigger
-// write, pause, and resume
-class SnapshotterClient : public rclcpp::Node
-{
-public:
-  explicit SnapshotterClient(const rclcpp::NodeOptions & options);
-
-private:
-  void setSnapshotterClientOptions(SnapshotterClientOptions const & opts);
-};
-
 }  // namespace rosbag2_snapshot
 
 #endif  // ROSBAG2_SNAPSHOT__SNAPSHOTTER_HPP_

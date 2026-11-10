@@ -10,6 +10,7 @@ ament_auto_add_library(${PROJECT_NAME} SHARED
   include/rosbag2_snapshot/snapshotter.hpp
 # src/snapshot.cpp
   src/snapshotter.cpp
+  src/snapshotter_client.cpp
 )
 
 rclcpp_components_register_node(${PROJECT_NAME}
