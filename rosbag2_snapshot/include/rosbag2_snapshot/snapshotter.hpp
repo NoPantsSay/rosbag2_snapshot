@@ -128,9 +128,13 @@ struct SnapshotterOptions
   // Flag if all topics should be recorded
   bool all_topics_;
   // Storage format backend (e.g. "sqlite3" or "mcap")
-  std::string storage_id_;
+  std::string storage_;
   // Whether to clear the buffer when resuming from pause (default: true, set clear_buffer:=false to disable)
   bool clear_buffer_;
+  // Storage preset profile name (e.g. "resilient")
+  std::string storage_preset_profile_;
+  // Path to YAML file for storage specific config
+  std::string storage_config_file_;
 
   typedef std::map<TopicDetails, SnapshotterTopicOptions> topics_t;
   // Provides list of topics to snapshot and their limit configurations
@@ -140,7 +144,9 @@ struct SnapshotterOptions
     rclcpp::Duration default_duration_limit = rclcpp::Duration(30s),
     int32_t default_memory_limit = -1,
     const std::string & storage_id = "sqlite3",
-    bool clear_buffer = true);
+    bool clear_buffer = true,
+    const std::string & storage_preset_profile = "",
+    const std::string & storage_config_file = "");
 
   // Add a new topic to the configuration, returns false if the topic was already present
   bool addTopic(

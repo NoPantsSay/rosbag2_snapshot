@@ -74,11 +74,15 @@ SnapshotterOptions::SnapshotterOptions(
   rclcpp::Duration default_duration_limit,
   int32_t default_memory_limit,
   const std::string & storage_id,
-  bool clear_buffer)
+  bool clear_buffer,
+  const std::string & storage_preset_profile,
+  const std::string & storage_config_file)
 : default_duration_limit_(default_duration_limit),
   default_memory_limit_(default_memory_limit),
-  storage_id_(storage_id),
+  storage_(storage_id),
   clear_buffer_(clear_buffer),
+  storage_preset_profile_(storage_preset_profile),
+  storage_config_file_(storage_config_file),
   topics_()
 {
 }
@@ -308,8 +312,8 @@ void Snapshotter::parseOptionsFromParams()
   }
 
   try {
-    options_.storage_id_ = declare_parameter<std::string>(
-      "storage_id", "sqlite3");
+    options_.storage_ = declare_parameter<std::string>(
+      "storage", "sqlite3");
   } catch (const rclcpp::ParameterTypeException & ex) {
     RCLCPP_ERROR(get_logger(), "storage_id must be a string.");
     throw ex;
@@ -320,6 +324,22 @@ void Snapshotter::parseOptionsFromParams()
       "clear_buffer", true);
   } catch (const rclcpp::ParameterTypeException & ex) {
     RCLCPP_ERROR(get_logger(), "clear_buffer must be a boolean.");
+    throw ex;
+  }
+
+  try {
+    options_.storage_preset_profile_ = declare_parameter<std::string>(
+      "storage_preset_profile", "");
+  } catch (const rclcpp::ParameterTypeException & ex) {
+    RCLCPP_ERROR(get_logger(), "storage_preset_profile must be a string.");
+    throw ex;
+  }
+
+  try {
+    options_.storage_config_file_ = declare_parameter<std::string>(
+      "storage_config_file", "");
+  } catch (const rclcpp::ParameterTypeException & ex) {
+    RCLCPP_ERROR(get_logger(), "storage_config_file must be a string.");
     throw ex;
   }
 
@@ -534,7 +554,9 @@ void Snapshotter::triggerSnapshotCb(
   try {
     rosbag2_storage::StorageOptions storage_options;
     storage_options.uri = req->filename;
-    storage_options.storage_id = options_.storage_id_;
+    storage_options.storage_id = options_.storage_;
+    storage_options.storage_preset_profile = options_.storage_preset_profile_;
+    storage_options.storage_config_uri = options_.storage_config_file_;
     bag_writer.open(storage_options);
   } catch (const std::exception & ex) {
     res->success = false;
