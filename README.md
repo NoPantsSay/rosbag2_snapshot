@@ -24,7 +24,7 @@ Buffer recent messages until triggered to write or trigger an already running in
     default_duration_limit: 10.0           # [Optional, default=30.0] Maximum time difference between newest and oldest message in seconds
     default_memory_limit: 64.0             # [Optional, default=-1] Maximum memory used by messages in each topic's buffer, in MB
     storage_id: "sqlite3"                  # [Optional, default="sqlite3"] Storage format backend. Use "mcap" for MCAP format.
-    clear: true                            # [Optional, default=true] Whether to clear buffer on resume. Use --no-clear to disable.
+    clear_buffer: true                      # [Optional, default=true] Whether to clear buffer on resume. Set to false to keep buffered data.
     topics: ["/topic1", "/topic2"]         # [Optional] List of topics to buffer. If empty, buffer all topics.
     topic_details:
       /topic1:
@@ -44,10 +44,10 @@ example
 ros2 run rosbag2_snapshot snapshotter --ros-args -p default_duration_limit:=10.0 -p storage_id:='mcap'
 ```
 
-To keep buffered data when resuming from pause, use `--no-clear`:
+To keep buffered data when resuming from pause, set `clear_buffer` to `false`:
 
 ```bash
-ros2 run rosbag2_snapshot snapshotter --ros-args --no-clear
+ros2 run rosbag2_snapshot snapshotter --ros-args -p clear_buffer:=false
 ```
 
 ### Client

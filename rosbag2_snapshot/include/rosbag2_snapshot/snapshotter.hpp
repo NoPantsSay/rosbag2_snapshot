@@ -129,7 +129,7 @@ struct SnapshotterOptions
   bool all_topics_;
   // Storage format backend (e.g. "sqlite3" or "mcap")
   std::string storage_id_;
-  // Whether to clear the buffer when resuming from pause (default: true, --no-clear disables)
+  // Whether to clear the buffer when resuming from pause (default: true, set clear_buffer:=false to disable)
   bool clear_buffer_;
 
   typedef std::map<TopicDetails, SnapshotterTopicOptions> topics_t;

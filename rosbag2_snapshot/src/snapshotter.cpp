@@ -317,9 +317,9 @@ void Snapshotter::parseOptionsFromParams()
 
   try {
     options_.clear_buffer_ = declare_parameter<bool>(
-      "clear", true);
+      "clear_buffer", true);
   } catch (const rclcpp::ParameterTypeException & ex) {
-    RCLCPP_ERROR(get_logger(), "clear must be a boolean.");
+    RCLCPP_ERROR(get_logger(), "clear_buffer must be a boolean.");
     throw ex;
   }
 
