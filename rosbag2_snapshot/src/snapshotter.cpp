@@ -73,10 +73,12 @@ SnapshotterTopicOptions::SnapshotterTopicOptions(
 SnapshotterOptions::SnapshotterOptions(
   rclcpp::Duration default_duration_limit,
   int32_t default_memory_limit,
-  const std::string & storage_id)
+  const std::string & storage_id,
+  bool clear_buffer)
 : default_duration_limit_(default_duration_limit),
   default_memory_limit_(default_memory_limit),
   storage_id_(storage_id),
+  clear_buffer_(clear_buffer),
   topics_()
 {
 }
@@ -286,7 +288,7 @@ void Snapshotter::parseOptionsFromParams()
 
   try {
     options_.default_duration_limit_ = rclcpp::Duration::from_seconds(
-      declare_parameter<double>("default_duration_limit", -1.0));
+      declare_parameter<double>("default_duration_limit", 30.0));
   } catch (const rclcpp::ParameterTypeException & ex) {
     RCLCPP_ERROR(get_logger(), "default_duration_limit is of incorrect type.");
     throw ex;
@@ -310,6 +312,14 @@ void Snapshotter::parseOptionsFromParams()
       "storage_id", "sqlite3");
   } catch (const rclcpp::ParameterTypeException & ex) {
     RCLCPP_ERROR(get_logger(), "storage_id must be a string.");
+    throw ex;
+  }
+
+  try {
+    options_.clear_buffer_ = declare_parameter<bool>(
+      "clear", true);
+  } catch (const rclcpp::ParameterTypeException & ex) {
+    RCLCPP_ERROR(get_logger(), "clear must be a boolean.");
     throw ex;
   }
 
@@ -591,9 +601,12 @@ void Snapshotter::pause()
 
 void Snapshotter::resume()
 {
-  clear();
+  if (options_.clear_buffer_) {
+    clear();
+    RCLCPP_INFO(get_logger(), "old data cleared.");
+  }
   recording_ = true;
-  RCLCPP_INFO(get_logger(), "Buffering resumed and old data cleared.");
+  RCLCPP_INFO(get_logger(), "Buffering resumed");
 }
 
 void Snapshotter::enableCb(
