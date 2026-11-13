@@ -30,6 +30,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rosbag2_snapshot/snapshotter.hpp>
 #include <rosbag2_storage/storage_options.hpp>
+#include <rosbag2_storage/yaml.hpp>
 
 #include <cassert>
 #include <chrono>
@@ -458,12 +459,94 @@ void Snapshotter::subscribe(
   auto sub = create_generic_subscription(
     topic_details.name,
     topic_details.type,
-    rclcpp::QoS{10},
+    subscriptionQosForTopic(topic_details.name),
     std::bind(&Snapshotter::topicCb, this, _1, queue),
     opts
   );
 
   queue->setSubscriber(sub);
+}
+
+rclcpp::QoS Snapshotter::subscriptionQosForTopic(const std::string & topic_name) const
+{
+  auto endpoints = get_publishers_info_by_topic(topic_name);
+  rclcpp::QoS qos = rclcpp::QoS{10};
+
+  if (endpoints.empty()) {
+    return qos;  // no publishers yet — return default, discovery may re-subscribe later
+  }
+
+  const size_t num_endpoints = endpoints.size();
+  size_t reliable_count = 0;
+  size_t transient_local_count = 0;
+  for (const auto & ep : endpoints) {
+    const auto & p = ep.qos_profile().get_rmw_qos_profile();
+    if (p.reliability == RMW_QOS_POLICY_RELIABILITY_RELIABLE) {
+      reliable_count++;
+    }
+    if (p.durability == RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL) {
+      transient_local_count++;
+    }
+  }
+
+  // Reliability: only use RELIABLE if every publisher offers it;
+  // otherwise fall back to BEST_EFFORT (compatible with all).
+  if (reliable_count == num_endpoints) {
+    qos.reliable();
+  } else {
+    if (reliable_count > 0) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Some (but not all) publishers on '%s' offer RELIABLE; "
+        "using BEST_EFFORT to catch all. "
+        "Some reliable messages may be dropped.",
+        topic_name.c_str());
+    }
+    qos.best_effort();
+  }
+
+  // Durability: only request TRANSIENT_LOCAL when all publishers offer it.
+  if (transient_local_count == num_endpoints) {
+    qos.transient_local();
+  } else {
+    if (transient_local_count > 0) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Some (but not all) publishers on '%s' offer TRANSIENT_LOCAL; "
+        "using VOLATILE to catch all. "
+        "Latched messages will not be retrieved.",
+        topic_name.c_str());
+    }
+    qos.durability_volatile();
+  }
+
+  // deadline, lifespan, liveliness: leave at default (unspecified).
+  // They do not affect message delivery.
+  return qos;
+}
+
+std::string Snapshotter::serializedOfferedQosProfilesForTopic(const std::string & topic_name) const
+{
+  YAML::Node offered_qos_profiles;
+  auto endpoints = get_publishers_info_by_topic(topic_name);
+  for (const auto & info : endpoints) {
+    const auto & p = info.qos_profile().get_rmw_qos_profile();
+    YAML::Node qos_node;
+    qos_node["history"] = static_cast<int>(p.history);
+    qos_node["depth"] = p.depth;
+    qos_node["reliability"] = static_cast<int>(p.reliability);
+    qos_node["durability"] = static_cast<int>(p.durability);
+    qos_node["deadline"]["sec"] = p.deadline.sec;
+    qos_node["deadline"]["nsec"] = p.deadline.nsec;
+    qos_node["lifespan"]["sec"] = p.lifespan.sec;
+    qos_node["lifespan"]["nsec"] = p.lifespan.nsec;
+    qos_node["liveliness"] = static_cast<int>(p.liveliness);
+    qos_node["liveliness_lease_duration"]["sec"] = p.liveliness_lease_duration.sec;
+    qos_node["liveliness_lease_duration"]["nsec"] = p.liveliness_lease_duration.nsec;
+    qos_node["avoid_ros_namespace_conventions"] = p.avoid_ros_namespace_conventions;
+    offered_qos_profiles.push_back(qos_node);
+  }
+  return YAML::Dump(offered_qos_profiles);
 }
 
 bool Snapshotter::writeTopic(
@@ -482,6 +565,7 @@ bool Snapshotter::writeTopic(
   tm.name = topic_details.name;
   tm.type = topic_details.type;
   tm.serialization_format = "cdr";
+  tm.offered_qos_profiles = serializedOfferedQosProfilesForTopic(topic_details.name);
 
   bag_writer.create_topic(tm);
 

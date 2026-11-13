@@ -265,6 +265,12 @@ private:
   void subscribe(
     const TopicDetails & topic_details,
     std::shared_ptr<MessageQueue> queue);
+  // Compute a QoS profile compatible with all publishers on the given topic.
+  // Mirrors rosbag2_transport::Rosbag2QoS::adapt_request_to_offers.
+  rclcpp::QoS subscriptionQosForTopic(const std::string & topic_name) const;
+  // Serialize offered QoS profiles from all publishers on a topic to a YAML string,
+  // suitable for writing into TopicMetadata::offered_qos_profiles.
+  std::string serializedOfferedQosProfilesForTopic(const std::string & topic_name) const;
   // Called on new message from any configured topic. Adds to queue for that topic
   void topicCb(
     std::shared_ptr<const rclcpp::SerializedMessage> msg,
